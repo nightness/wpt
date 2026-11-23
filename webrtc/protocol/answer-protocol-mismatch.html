@@ -1,0 +1,55 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>RTCPeerConnection setRemoteDescription answer with a different protocol</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="../RTCPeerConnection-helper.js"></script>
+<script>
+'use strict';
+
+// https://www.rfc-editor.org/rfc/rfc9429#section-5.8.3
+//   "If this session description is of type "pranswer" or "answer", the
+//   following additional checks are applied:
+//   [...]
+//   * For each "m=" section, the media type and protocol values MUST exactly
+//     match the media type and protocol values in the corresponding "m="
+//     section in the associated offer.
+//   If any of the preceding checks failed, processing MUST stop and an error
+//   MUST be returned."
+//
+// https://w3c.github.io/webrtc-pc/#set-description
+//   "If the description failed semantics validation as defined in [RFC9429]
+//   Section 5.8.3., then reject p with a newly created InvalidAccessError and
+//   abort these steps."
+
+// Returns an offerer in have-local-offer and the answer to its offer, which
+// has an audio and a video m= section.
+async function createOffererAndAnswer(t) {
+  const offerer = new RTCPeerConnection();
+  t.add_cleanup(() => offerer.close());
+  const answerer = new RTCPeerConnection();
+  t.add_cleanup(() => answerer.close());
+  offerer.addTransceiver('audio');
+  offerer.addTransceiver('video');
+  const offer = await offerer.createOffer();
+  await offerer.setLocalDescription(offer);
+  await answerer.setRemoteDescription(offer);
+  const answer = await answerer.createAnswer();
+  return {offerer, answer};
+}
+
+promise_test(async t => {
+  // Control: the unmodified answer is accepted, so a rejection below can only
+  // be caused by the changed protocol.
+  const control = await createOffererAndAnswer(t);
+  await control.offerer.setRemoteDescription(control.answer);
+
+  const {offerer, answer} = await createOffererAndAnswer(t);
+  const sdp = answer.sdp.replace(/^m=video (\d+) UDP\/TLS\/RTP\/SAVPF /m,
+                                 'm=video $1 TCP/DTLS/RTP/SAVPF ');
+  assert_not_equals(sdp, answer.sdp, 'the modification changed the answer');
+  await promise_rejects_dom(t, 'InvalidAccessError',
+      offerer.setRemoteDescription({type: 'answer', sdp}));
+}, 'setRemoteDescription(answer) with a protocol different from the offer ' +
+   'rejects with InvalidAccessError');
+</script>
