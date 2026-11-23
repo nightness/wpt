@@ -38,4 +38,52 @@ promise_test(async t => {
   await promise_rejects_dom(t, 'InvalidStateError', pc.createAnswer());
 }, 'createAnswer() when connection is closed should reject with InvalidStateError');
 
+// https://w3c.github.io/webrtc-pc/#dom-rtcpeerconnection-createanswer
+// To create an answer given connection run the following steps:
+//   If connection.[[SignalingState]] is neither "have-remote-offer" nor
+//   "have-local-pranswer", return a promise rejected with a newly created
+//   InvalidStateError.
+promise_test(async t => {
+  const pc = new RTCPeerConnection();
+  t.add_cleanup(() => pc.close());
+
+  pc.addTransceiver('audio');
+  await pc.setLocalDescription(await pc.createOffer());
+  assert_equals(pc.signalingState, 'have-local-offer');
+
+  await promise_rejects_dom(t, 'InvalidStateError', pc.createAnswer());
+}, 'createAnswer() in have-local-offer should reject with InvalidStateError');
+
+promise_test(async t => {
+  const offerer = new RTCPeerConnection();
+  t.add_cleanup(() => offerer.close());
+  const answerer = new RTCPeerConnection();
+  t.add_cleanup(() => answerer.close());
+
+  offerer.addTransceiver('audio');
+  const offer = await offerer.createOffer();
+  await offerer.setLocalDescription(offer);
+  await answerer.setRemoteDescription(offer);
+  const {sdp} = await answerer.createAnswer();
+  await offerer.setRemoteDescription({type: 'pranswer', sdp});
+  assert_equals(offerer.signalingState, 'have-remote-pranswer');
+
+  await promise_rejects_dom(t, 'InvalidStateError', offerer.createAnswer());
+}, 'createAnswer() in have-remote-pranswer should reject with InvalidStateError');
+
+promise_test(async t => {
+  const offerer = new RTCPeerConnection();
+  t.add_cleanup(() => offerer.close());
+  const answerer = new RTCPeerConnection();
+  t.add_cleanup(() => answerer.close());
+
+  offerer.addTransceiver('audio');
+  await exchangeOfferAnswer(offerer, answerer);
+  assert_equals(answerer.signalingState, 'stable');
+  assert_not_equals(answerer.remoteDescription, null);
+
+  await promise_rejects_dom(t, 'InvalidStateError', answerer.createAnswer());
+}, 'createAnswer() in stable after a completed offer/answer exchange should ' +
+   'reject with InvalidStateError');
+
 </script>

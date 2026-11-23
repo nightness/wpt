@@ -1,0 +1,47 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>RTCPeerConnection.prototype.createOffer in pranswer signaling states</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script>
+'use strict';
+
+// https://w3c.github.io/webrtc-pc/#dom-rtcpeerconnection-createoffer
+// To create an offer given connection run the following steps:
+//   If connection.[[SignalingState]] is neither "stable" nor
+//   "have-local-offer", return a promise rejected with a newly created
+//   InvalidStateError.
+// RTCPeerConnection-createOffer.html covers "have-remote-offer".
+
+promise_test(async t => {
+  const offerer = new RTCPeerConnection();
+  t.add_cleanup(() => offerer.close());
+  const answerer = new RTCPeerConnection();
+  t.add_cleanup(() => answerer.close());
+
+  offerer.addTransceiver('audio');
+  await answerer.setRemoteDescription(await offerer.createOffer());
+  const {sdp} = await answerer.createAnswer();
+  await answerer.setLocalDescription({type: 'pranswer', sdp});
+  assert_equals(answerer.signalingState, 'have-local-pranswer');
+
+  await promise_rejects_dom(t, 'InvalidStateError', answerer.createOffer());
+}, 'createOffer() in have-local-pranswer should reject with InvalidStateError');
+
+promise_test(async t => {
+  const offerer = new RTCPeerConnection();
+  t.add_cleanup(() => offerer.close());
+  const answerer = new RTCPeerConnection();
+  t.add_cleanup(() => answerer.close());
+
+  offerer.addTransceiver('audio');
+  const offer = await offerer.createOffer();
+  await offerer.setLocalDescription(offer);
+  await answerer.setRemoteDescription(offer);
+  const {sdp} = await answerer.createAnswer();
+  await offerer.setRemoteDescription({type: 'pranswer', sdp});
+  assert_equals(offerer.signalingState, 'have-remote-pranswer');
+
+  await promise_rejects_dom(t, 'InvalidStateError', offerer.createOffer());
+}, 'createOffer() in have-remote-pranswer should reject with InvalidStateError');
+</script>
