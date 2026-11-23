@@ -1,0 +1,48 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>RTCPeerConnection subsequent offers</title>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="../RTCPeerConnection-helper.js"></script>
+<script>
+'use strict';
+
+// Tests for the construction of subsequent offers according to
+// https://www.rfc-editor.org/rfc/rfc9429#section-5.2.2
+
+function parseOriginLine(sdp) {
+  const fields = /^o=(\S+) (\d+) (\d+) (\S+) (\S+) (\S+)$/m.exec(sdp);
+  assert_not_equals(fields, null, 'the o= line is well formed');
+  const [, username, sessId, sessVersion, netType, addrType, address] = fields;
+  return {username, sessId, sessVersion: BigInt(sessVersion), netType,
+          addrType, address};
+}
+
+// [RFC9429] section 5.2.2:
+//   "If the previous offer was not applied using setLocalDescription, meaning
+//   the PeerConnection is still in the "stable" state, the steps for
+//   generating an initial offer MUST be followed, subject to the following
+//   restriction:
+//   * The fields of the "o=" line MUST stay the same except for the
+//     <session-version> field, which MUST increment by one on each call to
+//     createOffer if the offer might differ from the output of the previous
+//     call to createOffer; implementations MAY opt to increment
+//     <session-version> on every call."
+// Adding a transceiver between the two calls makes the second offer differ.
+promise_test(async t => {
+  const pc = new RTCPeerConnection();
+  t.add_cleanup(() => pc.close());
+  pc.addTransceiver('audio');
+  const first = parseOriginLine((await pc.createOffer()).sdp);
+  pc.addTransceiver('video');
+  const second = parseOriginLine((await pc.createOffer()).sdp);
+
+  assert_equals(second.username, first.username, 'username');
+  assert_equals(second.sessId, first.sessId, 'sess-id');
+  assert_equals(second.netType, first.netType, 'nettype');
+  assert_equals(second.addrType, first.addrType, 'addrtype');
+  assert_equals(second.address, first.address, 'unicast-address');
+  assert_equals(second.sessVersion, first.sessVersion + 1n, 'sess-version');
+}, 'A second offer in stable keeps the o= line and increments ' +
+   'sess-version by one');
+</script>

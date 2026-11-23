@@ -38,4 +38,19 @@
     // After this, the order is not dictated by JSEP.
     // TODO: Check lines subsequent to the s= line.
   }, 'Offer conforms to basic SDP requirements');
+
+  // https://www.rfc-editor.org/rfc/rfc9429#section-5.2.1
+  //   "The <sess-id> MUST be representable by a 64-bit signed integer, and
+  //   the value MUST be less than (2^63)-1."
+  // The value is compared as a BigInt, since a Number cannot represent every
+  // integer in this range.
+  promise_test(async t => {
+    const pc = new RTCPeerConnection();
+    t.add_cleanup(() => pc.close());
+    const offer = await generateVideoReceiveOnlyOffer(pc);
+    const originLine = offer.sdp.split('\r\n')[1];
+    const fields = /^o=\S+ (\d+) \d+ IN IP4 \S+$/.exec(originLine);
+    assert_not_equals(fields, null, 'the o= line is well formed');
+    assert_less_than(BigInt(fields[1]), 2n ** 63n - 1n);
+  }, 'Offer sess-id is less than 2^63 - 1');
 </script>
